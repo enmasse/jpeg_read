@@ -15,7 +15,7 @@ component= {}
 num_components= 0
 mcus_read= 0
 dc= []
-inline_dc= 1
+inline_dc= 0
 
 idct_precision= 8
 
@@ -23,18 +23,29 @@ EOI= False
 data= []
 
 
+def read_word(file):
+   out= ord(file.read(1)) << 8
+   out|= ord(file.read(1))
+
+   return out
+
+def read_byte(file):
+   out= ord(file.read(1))
+
+   return out
+
+
 def read_dht(file):
    global huffman_ac_tables
    global huffman_dc_tables
 
-   Lh= ord(file.read(1)) << 8
-   Lh= Lh | ord(file.read(1))
+   Lh= read_word(file)
    Lh-= 2
    while Lh>0:
       huffsize= []
       huffval= []
       print "Lh: %d" % Lh
-      T= ord(file.read(1))
+      T= read_byte(file)
       Th= T & 0x0F
       print "Th: %d" % Th
       Tc= (T >> 4) & 0x0F
@@ -42,16 +53,16 @@ def read_dht(file):
       Lh= Lh-1
 
       for i in range(16):
-         huffsize.append(ord(file.read(1)))
-         Lh= Lh-1
+         huffsize.append(read_byte(file))
+         Lh-= 1
 
       huffcode= huffman_codes(huffsize)
 
       print "Huffcode", huffcode
 
       for i in huffcode:
-         huffval.append(ord(file.read(1)))
-         Lh= Lh-1
+         huffval.append(read_byte(file))
+         Lh-= 1
 
       if Tc==0:
          huffman_dc_tables[Th]= map_codes_to_values(huffcode, huffval)
@@ -87,25 +98,23 @@ def huffman_codes(huffsize):
 def read_dqt(file):
    global q_table
 
-   Lq= ord(file.read(1)) << 8
-   Lq|= ord(file.read(1))
+   Lq= read_word(file)
    Lq-= 2
    while Lq>0:
       table= []
-      Tq= ord(file.read(1))
+      Tq= read_byte(file)
       Pq= Tq >> 4
       Tq&= 0xF
       Lq-= 1
 
       if Pq==0:
          for i in range(64):
-            table.append(ord(file.read(1)))
+            table.append(read_byte(file))
             Lq-= 1
 
       else:
          for i in range(64):
-            val= ord(file.read(1)) << 8
-            val|= ord(file.read(1))
+            val= read_word(file)
             table.append(val)
             Lq-= 2   
 
@@ -116,27 +125,24 @@ def read_sof(type, file):
    global component
    global XYP
 
-   Lf= ord(file.read(1)) << 8
-   Lf|= ord(file.read(1))
+   Lf= read_word(file)
    Lf-= 2
-   P= ord(file.read(1))
+   P= read_byte(file)
    Lf-= 1
-   Y= ord(file.read(1)) << 8
-   Y|= ord(file.read(1))
+   Y= read_word(file)
    Lf-= 2
-   X= ord(file.read(1)) << 8
-   X|= ord(file.read(1))
+   X= read_word(file)
    Lf-= 2
-   Nf= ord(file.read(1))
+   Nf= read_byte(file)
    Lf-= 1
 
    XYP= X, Y, P
    print XYP
 
    while Lf>0:
-      C= ord(file.read(1))
-      V= ord(file.read(1))
-      Tq= ord(file.read(1))
+      C= read_byte(file)
+      V= read_byte(file)
+      Tq= read_byte(file)
       Lf-= 3
       H= V >> 4
       V&= 0xF
@@ -147,8 +153,7 @@ def read_sof(type, file):
 
 
 def read_app(type, file):
-   Lp= ord(file.read(1)) << 8
-   Lp|= ord(file.read(1))
+   Lp= read_word(file)
    Lp-= 2
 
    if type==0:
@@ -171,11 +176,9 @@ def read_app(type, file):
 def read_dnl(file):
    global XYP
 
-   Ld= ord(file.read(1)) << 8
-   Ld|= ord(file.read(1))
+   Ld= read_word(file)
    Ld-= 2
-   NL= ord(file.read(1)) << 8
-   NL|= ord(file.read(1))
+   NL= read_word(file)
    Ld-= 2
 
    X, Y, P= XYP
@@ -189,27 +192,26 @@ def read_sos(file):
    global num_components
    global dc
 
-   Ls= ord(file.read(1)) << 8
-   Ls|= ord(file.read(1))
+   Ls= read_word(file)
    Ls-= 2
-   Ns= ord(file.read(1))
+   Ns= read_byte(file)
    Ls-= 1
 
    for i in range(Ns):
-      Cs= ord(file.read(1))
+      Cs= read_byte(file)
       Ls-= 1
-      Ta= ord(file.read(1))
+      Ta= read_byte(file)
       Ls-= 1
       Td= Ta >> 4
       Ta&= 0xF
       component[Cs]['Td']= Td
       component[Cs]['Ta']= Ta
 
-   Ss= ord(file.read(1))
+   Ss= read_byte(file)
    Ls-= 1
-   Se= ord(file.read(1))
+   Se= read_byte(file)
    Ls-= 1
-   A= ord(file.read(1))
+   A= read_byte(file)
    Ls-= 1
 
    print "Ns:%d Ss:%d Se:%d A:%02X" % (Ns, Ss, Se, A)
