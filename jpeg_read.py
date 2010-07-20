@@ -425,7 +425,7 @@ def zagzig(du):
 
 
 def for_each_du_in_mcu(mcu, func):
-   out= copy.deepcopy(mcu)
+   out= [ [ 0 for du in comp ] for comp in mcu ]
 
    for comp in range(len(out)):
       for du in range(len(out[comp])):
@@ -459,7 +459,8 @@ def idct_func(u, x):
 
 def idct(matrix):
    global idct_precision
-   out= copy.deepcopy(matrix)
+#   out= copy.deepcopy(matrix)
+   out= [ [0 for x in y] for y in matrix]
 
    for x in range(8):
       for y in range(8):
@@ -572,10 +573,11 @@ def YCbCr2Y(Y, Cb, Cr):
 
 
 def for_each_pixel(data, func):
-   out= copy.deepcopy(data)
+#   out= copy.deepcopy(data)
+   out= [ [0 for pixel in range(len(data[0]))] for line in range(len(data))]
 
    for line in range(len(data)):
-      for pixel in range(len(data[line])):
+      for pixel in range(len(data[0])):
          out[line][pixel]= func(*data[line][pixel])
 
    return out
