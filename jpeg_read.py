@@ -679,4 +679,4 @@ data= for_each_pixel(data, prepare)
 print "tuplify"
 data= tuplify(data)
 
-#display_image(data)
+display_image(data)
