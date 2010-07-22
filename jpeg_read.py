@@ -434,32 +434,17 @@ def for_each_du_in_mcu(mcu, func):
    return out
 
 
-def memoize(function):
-   cache= {}
-   def decorated_function(*args):
-      if args in cache:
-         return cache[args]
-      else:
-         val= function(*args)
-         cache[args]= val
-         return val
-   return decorated_function
-
-
 def C(x):
    if x==0:
       return 1.0/sqrt(2.0)
    else:
       return 1.0
 
-@memoize
-def idct_func(u, x):
-   return C(u)*cos(((2.0*x+1.0)*u*pi)/16.0)
+idct_table= [ [(C(u)*cos(((2.0*x+1.0)*u*pi)/16.0)) for x in range(8)] for u in range(8) ]
 
 
 def idct(matrix):
    global idct_precision
-#   out= copy.deepcopy(matrix)
    out= [ [0 for x in y] for y in matrix]
 
    for x in range(8):
@@ -468,10 +453,9 @@ def idct(matrix):
 
          for u in range(idct_precision):
             for v in range(idct_precision):
-#               sum+= matrix[v][u]*C(u)*C(v)*cos(((2.0*x+1.0)*u*pi)/16.0)*cos(((2.0*y+1.0)*v*pi)/16.0)
-               sum+= matrix[v][u]*idct_func(u, x)*idct_func(v, y)
+               sum+= matrix[v][u]*idct_table[u][x]*idct_table[v][y]
 
-         out[y][x]= sum/4.0
+         out[y][x]= sum//4
 
    return out
 
@@ -695,4 +679,4 @@ data= for_each_pixel(data, prepare)
 print "tuplify"
 data= tuplify(data)
 
-display_image(data)
+#display_image(data)
