@@ -1,9 +1,27 @@
 #!/usr/bin/env python
 
+copyright_notice= """
+    jpeg_read.py - jpeg decoder.
+    Copyright (C) 2010 Mats Alritzson 
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
+
 import sys
-import copy
 from math import *
 from Tkinter import *
+from memoize import *
 
 huffman_ac_tables= [{}, {}, {}, {}]
 huffman_dc_tables= [{}, {}, {}, {}]
@@ -219,6 +237,7 @@ def read_sos(file):
    dc= [0 for i in range(num_components+1)]
 
 
+@memoize
 def calc_add_bits(len, val):
    if (val & (1 << len-1)):
       pass
@@ -372,8 +391,6 @@ def read_mcu():
    global num_components
    global mcus_read
 
-   print "mcu:", mcus_read
-
    comp_num= mcu= range(num_components)
          
    for i in comp_num:
@@ -382,9 +399,6 @@ def read_mcu():
       for j in range(comp['H']*comp['V']):     
          if not EOI:
             mcu[i].append(read_data_unit(i+1))
-
-#   if 9<=mcus_read<=10:
-#      print mcu
 
    mcus_read+= 1
 
@@ -425,15 +439,10 @@ def zagzig(du):
 
 
 def for_each_du_in_mcu(mcu, func):
-   out= [ [ 0 for du in comp ] for comp in mcu ]
-
-   for comp in range(len(out)):
-      for du in range(len(out[comp])):
-         out[comp][du]= func(mcu[comp][du])
-
-   return out
+   return [ map(func, comp) for comp in mcu ]
 
 
+#@memoize
 def C(x):
    if x==0:
       return 1.0/sqrt(2.0)
@@ -441,18 +450,19 @@ def C(x):
       return 1.0
 
 idct_table= [ [(C(u)*cos(((2.0*x+1.0)*u*pi)/16.0)) for x in range(8)] for u in range(8) ]
+range8= range(8)
+rangeIDCT= range(idct_precision)
 
 
 def idct(matrix):
-   global idct_precision
-   out= [ [0 for x in y] for y in matrix]
+   out= [ range(8) for i in range(8)]
 
-   for x in range(8):
-      for y in range(8):
+   for x in range8:
+      for y in range8:
          sum= 0
 
-         for u in range(idct_precision):
-            for v in range(idct_precision):
+         for u in rangeIDCT:
+            for v in rangeIDCT:
                sum+= matrix[v][u]*idct_table[u][x]*idct_table[v][y]
 
          out[y][x]= sum//4
@@ -529,15 +539,16 @@ def crop_image(data):
    return [ [ data[y][x] for x in range(X) ] for y in range(Y) ]
 
 
+@memoize
 def clip(x):
    if x>255:
       return 255
    elif x<0:
       return 0
    else:
-      return x
+      return int(x)
 
-
+@memoize
 def YCbCr2RGB(Y, Cb, Cr):
    Cred= 0.299
    Cgreen= 0.587
@@ -547,9 +558,7 @@ def YCbCr2RGB(Y, Cb, Cr):
    B= Cb*(2-2*Cblue)+Y
    G= (Y-Cblue*B-Cred*R)/Cgreen
 
-   R, G, B= clip(R+128), clip(G+128), clip(B+128)
-
-   return int(R), int(G), int(B)
+   return clip(R+128), clip(G+128), clip(B+128)
 
 
 def YCbCr2Y(Y, Cb, Cr):
@@ -557,7 +566,6 @@ def YCbCr2Y(Y, Cb, Cr):
 
 
 def for_each_pixel(data, func):
-#   out= copy.deepcopy(data)
    out= [ [0 for pixel in range(len(data[0]))] for line in range(len(data))]
 
    for line in range(len(data)):
@@ -575,7 +583,7 @@ def tuplify(data):
 
    return tuple(out)
 
-
+@memoize
 def prepare(x, y, z):
    return "#%02x%02x%02x" % (x, y, z)
 
@@ -652,7 +660,7 @@ if not inline_dc:
    data= restore_dc(data)
 
 print "dequantify"
-data= [dequantify(mcu) for mcu in data]
+data= map(dequantify, data)
 
 print "deserialize"
 data= [for_each_du_in_mcu(mcu, zagzig) for mcu in data]
@@ -661,7 +669,7 @@ print "inverse discrete cosine transform"
 data= [for_each_du_in_mcu(mcu, idct) for mcu in data]
 
 print "combine mcu"
-data= [combine_mcu(mcu) for mcu in data]
+data= map(combine_mcu, data)
 
 print "combine blocks"
 data= combine_blocks(data)
