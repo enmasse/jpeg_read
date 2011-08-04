@@ -40,23 +40,24 @@ idct_precision= 8
 EOI= False
 data= []
 
-
 def read_word(file):
+   """ Read a 16 bit word from file """
    out= ord(file.read(1)) << 8
    out|= ord(file.read(1))
-
    return out
 
 def read_byte(file):
+   """ Read a byte from file """
    out= ord(file.read(1))
-
    return out
 
 
 def read_dht(file):
+   """ Read and compute the huffman tables """
    global huffman_ac_tables
    global huffman_dc_tables
 
+   # Read the marker length
    Lh= read_word(file)
    Lh-= 2
    while Lh>0:
@@ -70,18 +71,23 @@ def read_dht(file):
       print "Tc: %d" % Tc
       Lh= Lh-1
 
+      # Read how many symbols of each length
+      # up to 16 bits
       for i in range(16):
          huffsize.append(read_byte(file))
          Lh-= 1
 
+      # Generate the huffman codes
       huffcode= huffman_codes(huffsize)
-
       print "Huffcode", huffcode
 
+      # Read the values that should be mapped to
+      # huffman codes
       for i in huffcode:
          huffval.append(read_byte(file))
          Lh-= 1
 
+      # Generate lookup tables
       if Tc==0:
          huffman_dc_tables[Th]= map_codes_to_values(huffcode, huffval)
       else:
@@ -89,6 +95,7 @@ def read_dht(file):
 
 
 def map_codes_to_values(codes, values):
+   """ Map the huffman code to the right value """
    out= {}
 
    for i in range(len(codes)):
@@ -98,10 +105,12 @@ def map_codes_to_values(codes, values):
 
 
 def huffman_codes(huffsize):
+   """ Calculate the huffman code of each length """
    huffcode= []
    k= 0
    code= 0
 
+   # Magic
    for i in range(len(huffsize)):
       si= huffsize[i]
       for k in range(si):
@@ -114,6 +123,8 @@ def huffman_codes(huffsize):
 
 
 def read_dqt(file):
+   """ Read the quantization table. 
+       The table is in zigzag order """
    global q_table
 
    Lq= read_word(file)
@@ -140,17 +151,23 @@ def read_dqt(file):
 
 
 def read_sof(type, file):
+   """ Read the start of frame marker """
    global component
    global XYP
 
+   # Read the marker length
    Lf= read_word(file)
    Lf-= 2
+   # Read the sample precision
    P= read_byte(file)
    Lf-= 1
+   # Read number of lines
    Y= read_word(file)
    Lf-= 2
+   # Read the number of sample per line
    X= read_word(file)
    Lf-= 2
+   # Read number of components
    Nf= read_byte(file)
    Lf-= 1
 
@@ -158,22 +175,30 @@ def read_sof(type, file):
    print XYP
 
    while Lf>0:
+      # Read component identifier
       C= read_byte(file)
+      # Read sampling factors
       V= read_byte(file)
       Tq= read_byte(file)
       Lf-= 3
       H= V >> 4
       V&= 0xF
       component[C]= {}
+      # Assign horizontal sampling factor
       component[C]['H']= H
+      # Assign vertical sampling factor
       component[C]['V']= V
+      # Assign quantization table
       component[C]['Tq']= Tq
 
 
 def read_app(type, file):
+   """ Read APP marker """
    Lp= read_word(file)
    Lp-= 2
 
+   # If APP0 try to read the JFIF header
+   # Not really necessary
    if type==0:
       identifier= file.read(5)
       Lp-= 5
@@ -192,6 +217,7 @@ def read_app(type, file):
 
 
 def read_dnl(file):
+   """Read the DNL marker Changes the number of lines """
    global XYP
 
    Ld= read_word(file)
@@ -206,29 +232,39 @@ def read_dnl(file):
 
 
 def read_sos(file):
+   """ Read the start of scan marker """
    global component
    global num_components
    global dc
 
    Ls= read_word(file)
    Ls-= 2
+  
+   # Read number of components in scan
    Ns= read_byte(file)
    Ls-= 1
 
    for i in range(Ns):
+      # Read the scan component selector
       Cs= read_byte(file)
       Ls-= 1
+      # Read the huffman table selectors
       Ta= read_byte(file)
       Ls-= 1
       Td= Ta >> 4
       Ta&= 0xF
+      # Assign the DC huffman table
       component[Cs]['Td']= Td
+      # Assign the AC huffman table
       component[Cs]['Ta']= Ta
 
+   # Should be zero if baseline DCT
    Ss= read_byte(file)
    Ls-= 1
+   # Should be 63 if baseline DCT
    Se= read_byte(file)
    Ls-= 1
+   # Should be zero if baseline DCT
    A= read_byte(file)
    Ls-= 1
 
@@ -239,6 +275,7 @@ def read_sos(file):
 
 @memoize
 def calc_add_bits(len, val):
+   """ Calculate the value from the "additional" bits in the huffman data. """
    if (val & (1 << len-1)):
       pass
    else:
@@ -248,6 +285,7 @@ def calc_add_bits(len, val):
 
 
 def bit_read(file):
+   """ Read one bit from file and handle markers and byte stuffing This is a generator function, google it. """
    global EOI
    global dc
    global inline_dc
@@ -257,11 +295,15 @@ def bit_read(file):
       if input==chr(0xFF):
          cmd= file.read(1)
          if cmd:
+            # Byte stuffing
             if cmd==chr(0x00):
                input= chr(0xFF)
+            # End of image marker
             elif cmd==chr(0xD9):
                EOI= True
+            # Restart markers
             elif 0xD0 <= ord(cmd) <= 0xD7 and inline_dc:
+               # Reset dc value
                dc= [0 for i in range(num_components+1)]
                input= file.read(1)
 	    else:
@@ -270,6 +312,7 @@ def bit_read(file):
 
       if not EOI:
          for i in range(7, -1, -1):
+            # Output next bit
             yield (ord(input) >> i) & 0x01
 
          input= file.read(1)
@@ -279,6 +322,7 @@ def bit_read(file):
 
 
 def get_bits(num, gen):
+   """ Get "num" bits from gen """
    out= 0
    for i in range(num):
       out<<= 1
@@ -302,6 +346,7 @@ def print_and_pause(fn):
 
 #@print_and_pause
 def read_data_unit(comp_num):
+   """ Read one DU with component id comp_num """
    global bit_stream
    global component
    global dc
@@ -311,36 +356,47 @@ def read_data_unit(comp_num):
    comp= component[comp_num]   
    huff_tbl= huffman_dc_tables[comp['Td']]
 
+   # Fill data with 64 coefficients
    while len(data)< 64:
       key= 0
 
       for bits in range(1, 17):
          key_len= []
          key<<= 1
+         # Get one bit from bit_stream
          val= get_bits(1, bit_stream)
          if val==[]:
             break
          key|= val
+         # If huffman code exists
          if huff_tbl.has_key((bits,key)):
             key_len= huff_tbl[(bits,key)]
             break
 
+      # After getting the DC value
+      # switch to the AC table
       huff_tbl= huffman_ac_tables[comp['Ta']]
 
       if key_len==[]:
          print (bits, key, bin(key)), "key not found"
          break
+      # If ZRL fill with 16 zero coefficients
       elif key_len==0xF0:
          for i in range(16):
             data.append(0)
          continue
 
+      # If not DC coefficient
       if len(data)!=0:
+         # If End of block
          if key_len==0x00:
+            # Fill the rest of the DU with zeros
             while len(data)< 64:
                data.append(0)
             break
 
+         # The first part of the AC key_len
+         # is the number of leading zeros
          for i in range(key_len >> 4):
             if len(data)<64:
                data.append(0)
@@ -351,12 +407,20 @@ def read_data_unit(comp_num):
          break
 
       if key_len!=0:
+         # The rest of key_len is the amount
+         # of "additional" bits
          val= get_bits(key_len, bit_stream)
          if val==[]:
             break
+         # Decode the additional bits
          num= calc_add_bits(key_len, val)
          
+         # Experimental, doesn't work right
          if len(data)==0 and inline_dc:
+            # The DC coefficient value
+            # is added to the DC value from
+            # the corresponding DU in the
+            # previous MCU
             num+= dc[comp_num]
             dc[comp_num]= num
 
@@ -371,11 +435,15 @@ def read_data_unit(comp_num):
 
 
 def restore_dc(data):
+   """ Restore the DC values as the DC values are coded as the difference from the previous DC value of the same component """
    dc_prev= [0 for x in range(len(data[0]))]
    out= []
 
+   # For each MCU
    for mcu in data:
+      # For each component
       for comp_num in range(len(mcu)):
+         # For each DU
          for du in range(len(mcu[comp_num])):
             if mcu[comp_num][du]:
                mcu[comp_num][du][0]+= dc_prev[comp_num]
@@ -387,15 +455,18 @@ def restore_dc(data):
 
 
 def read_mcu():
+   """ Read an MCU """
    global component
    global num_components
    global mcus_read
 
    comp_num= mcu= range(num_components)
          
+   # For each component
    for i in comp_num:
       comp= component[i+1]
       mcu[i]= []
+      # For each DU
       for j in range(comp['H']*comp['V']):     
          if not EOI:
             mcu[i].append(read_data_unit(i+1))
@@ -406,19 +477,26 @@ def read_mcu():
 
 
 def dequantify(mcu):
+   """ Dequantify MCU """
    global component
 
    out= mcu
 
+   # For each component
    for c in range(len(out)):
+      # For each DU
       for du in range(len(out[c])):
+         # For each coefficient
          for i in range(len(out[c][du])):
+            # Multiply by the the corresponding
+            # value in the quantization table
             out[c][du][i]*= q_table[component[c+1]['Tq']][i]
 
    return out
 
 
 def zagzig(du):
+   """ Put the coefficients in the right order """
    map= [[ 0,  1,  5,  6, 14, 15, 27, 28],
          [ 2,  4,  7, 13, 16, 26, 29, 42],
          [ 3,  8, 12, 17, 25, 30, 41, 43],
@@ -428,17 +506,21 @@ def zagzig(du):
          [21, 34, 37, 47, 50, 56, 59, 61],
          [35, 36, 48, 49, 57, 58, 62, 63]]
 
+   # Iterate over 8x8
    for x in range(8):
       for y in range(8):
          if map[x][y]<len(du):
             map[x][y]= du[map[x][y]]
          else:
+            # If DU is too short
+            # This shouldn't happen.
             map[x][y]= 0
 
    return map
 
 
 def for_each_du_in_mcu(mcu, func):
+   """ Helper function that iterates over all DU's in an MCU and runs "func" on it """
    return [ map(func, comp) for comp in mcu ]
 
 
@@ -449,18 +531,23 @@ def C(x):
    else:
       return 1.0
 
-idct_table= [ [(C(u)*cos(((2.0*x+1.0)*u*pi)/16.0)) for x in range(8)] for u in range(8) ]
+# Lookup table to speed up IDCT somewhat
+idct_table= [ [(C(u)*cos(((2.0*x+1.0)*u*pi)/16.0)) for x in range(idct_precision)] for u in range(idct_precision) ]
 range8= range(8)
 rangeIDCT= range(idct_precision)
 
 
 def idct(matrix):
+   """ Converts from frequency domain ordinary(?) """
    out= [ range(8) for i in range(8)]
 
+   # Iterate over every pixel in the block
    for x in range8:
       for y in range8:
          sum= 0
 
+         # Iterate over every coefficient
+         # in the DU
          for u in rangeIDCT:
             for v in rangeIDCT:
                sum+= matrix[v][u]*idct_table[u][x]*idct_table[v][y]
@@ -471,6 +558,7 @@ def idct(matrix):
 
 
 def expand(mcu, H, V):
+   """ Reverse subsampling """
    Hout= max(H)
    Vout= max(V)
    out= [ [ [] for x in range(8*Hout) ] for y in range(8*Vout) ]
@@ -539,7 +627,6 @@ def crop_image(data):
    return [ [ data[y][x] for x in range(X) ] for y in range(Y) ]
 
 
-@memoize
 def clip(x):
    if x>255:
       return 255
@@ -547,6 +634,13 @@ def clip(x):
       return 0
    else:
       return int(x)
+
+def clamp(x):
+    x = (abs(x) + x ) // 2
+    if x > 255:
+        return 255
+    else:
+        return x
 
 @memoize
 def YCbCr2RGB(Y, Cb, Cr):
@@ -558,7 +652,7 @@ def YCbCr2RGB(Y, Cb, Cr):
    B= Cb*(2-2*Cblue)+Y
    G= (Y-Cblue*B-Cred*R)/Cgreen
 
-   return clip(R+128), clip(G+128), clip(B+128)
+   return clamp(R+128), clamp(G+128), clamp(B+128)
 
 
 def YCbCr2Y(Y, Cb, Cr):
